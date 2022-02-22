@@ -3,18 +3,18 @@ Final Project for the for the Fundamentals of ML course winter term 21/22
 
 ---
 ## Group details:
-Jakob, Erben - jakobus.erben@gmail.com - 3727893
-Ebbo, Kramer - *Email einfügen* - *Mat.-Nr. einfügen*
-Vanessa, Zuber - *Email einfügen*  - *Mat.-Nr. einfügen*
+- Jakob, Erben - jakobus.erben@gmail.com - 3727893
+- Ebbo, Kramer - *Email einfügen* - *Mat.-Nr. einfügen*
+- Vanessa, Zuber - *Email einfügen*  - *Mat.-Nr. einfügen*
 
---
-##Where to find:
+---
+## Where to find:
 - report: *insert folder-adress*
 - agent-code: *insert folder-adress*
 - example replays: *insert folder-adress*
 
---
-##Important comands:
+---
+## Important comands:
 - run a game: *python main.py play*
 - run game with own agent: *python main.py play --my-agent my_agent*
 - run a game with multiple custom agents: *python main.py play --agents my_agent random_agent rule_based_agent peaceful_agent*
