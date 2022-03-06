@@ -21,3 +21,7 @@ Final Project for the for the Fundamentals of ML course winter term 21/22
 - for training consider: Use **--train N** (N specifies, that the first N agents passed by **--agents** should be trained)
 - training example: *python main.py play --agents my_agent random_agent rule_based_agent peaceful_agent --train 1* **OR** *python main.py play --my-agent my_agent --train 1*
 - **CARE:** Training will automatically stop when the last agent to be trained dies. In order to prevent this use the option: *--continue-without-training*
+
+---
+1. Task (Coin Heaven) </br>
+    -> **correct Command:** python main.py play --no-gui --agents own_coin_collector --train 1 --scenario coin-heaven
