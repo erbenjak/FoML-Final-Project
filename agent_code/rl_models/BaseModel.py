@@ -1,5 +1,5 @@
 import numpy as np
-
+from collections import deque
 """
     This class manages everything required to perform regression learning. 
     
@@ -26,6 +26,14 @@ class BaseModel:
     HEIGHT = -1
     ACTIONS = ["UP","DOWN","LEFT","RIGHT","WAIT","BOMB"]
 
+    # we need to setup some-action history
+    SHORT_MEMORY_LENGTH = 5
+    # gets extended after choosing an action contains
+    # defining a max-length means, that we are not required to pop the elements
+    memory_short = deque([],maxlen=SHORT_MEMORY_LENGTH)
+    # gets extended after learning and also stores the memory
+    memory_long = deque()
+
     def __init__(self,logger, WIDTH=17, HEIGHT=17, CENTER=(8,8)):
         self.WIDTH = WIDTH
         self.HEIGHT = HEIGHT
@@ -37,7 +45,14 @@ class BaseModel:
         # rotation-matrix is intialized it can be used to look up the new coordinates after the rotation
         self.rotationMatrix = self.initRotationMatrix(WIDTH,HEIGHT,CENTER)
 
+    def clean_up(self):
+        self.memory_short.clear()
+        self.memory_long.clear()
+        return
 
+    def add_move_to_memory(self, state_as_feature, chosen_action):
+        tuple_to_add = (state_as_feature, chosen_action)
+        self.memory_short.append(tuple_to_add)
 
     ############################# Abstract Headers #######################################################
 
@@ -60,6 +75,12 @@ class BaseModel:
         """
         raise NotImplementedError("A model must provide a methode to calculate it's reward. ")
 
+    def performLearningLastState(self, lastState, lastAction, reward):
+        """
+        Perform the learning for the last game state.
+        """
+        raise NotImplementedError("A model must provide a way to learn from it's last game state. ")
+
     def calculateFeaturesFromState(self, state):
         """
         Takes a gamestate and extracts the features which are required to take good decisions.
@@ -75,6 +96,22 @@ class BaseModel:
                                   "rewards possible.")
 
     ############################## State Multiplication Code #############################################
+    def performEndOfGameLearning(self, last_game_state, last_action, events):
+        """
+        This methode will call the learning version for a single instance after successfully
+        multiplying the states.
+        """
+        gameStates = self.multiply_game_state(last_game_state)
+
+        reward = self.calculateReward(events)
+
+        self.logger.info("calculated_reward end of game = " + str(reward))
+
+        actions = self.multiply_action(last_action)
+
+        for i in range(0,len(gameStates)):
+            self.performLearningLastState(gameStates[i],actions[i],reward)
+
 
     def performLearning(self, stateOld, stateNew, action, events):
         """
@@ -87,6 +124,8 @@ class BaseModel:
         events = self.compute_additional_rewards(events, stateNew, stateOld)
 
         reward = self.calculateReward(events)
+
+        self.logger.info("calculated_reward = " + str(reward))
 
         actions = self.multiply_action(action)
 
