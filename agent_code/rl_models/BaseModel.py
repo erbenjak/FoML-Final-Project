@@ -56,7 +56,7 @@ class BaseModel:
 
     ############################# Abstract Headers #######################################################
 
-    def playGame(self, state):
+    def playGame(self, train,state):
         """
         Uses the learned progress to play the game.
         """
@@ -87,7 +87,7 @@ class BaseModel:
         """
         raise NotImplementedError("A model must provide a methode to turn a gamestate into features. ")
 
-    def compute_additional_rewards(self, events, new_state, old_state):
+    def compute_additional_rewards(self, events, new_state, old_state, action):
         """
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
@@ -121,7 +121,7 @@ class BaseModel:
         oldStates = self.multiply_game_state(stateOld)
         newStates = self.multiply_game_state(stateNew)
 
-        events = self.compute_additional_rewards(events, stateNew, stateOld)
+        events = self.compute_additional_rewards(events, stateNew, stateOld, action, self.memory_short)
 
         reward = self.calculateReward(events)
 

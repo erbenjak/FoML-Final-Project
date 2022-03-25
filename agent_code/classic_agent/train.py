@@ -28,5 +28,5 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
 
 def end_of_round(self, last_game_state, last_action, events):
     self.model.performEndOfGameLearning(last_game_state, last_action, events)
-    self.model.store_current_qtbale(abs_path_q_table,abs_path_seen_sates_table)
+    self.model.store_current_q_table(abs_path_q_table,abs_path_seen_sates_table)
     return 1

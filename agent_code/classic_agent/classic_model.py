@@ -17,15 +17,16 @@ class ClassicModel(BaseQLearningModel):
         e.WAITED: -100,
         ###############
         e.SURVIVED_ROUND: 100,
-        e.KILLED_SELF: -1000,
+        e.KILLED_SELF: -1600,
         e.COIN_COLLECTED: 300,
         e.CRATE_DESTROYED: 200,
-        e.KILLED_OPPONENT: 1000,
+        e.KILLED_OPPONENT: 2000,
         e.GOT_KILLED: -700,
         e.COIN_FOUND: 50,
         ################ DISABLED EVENTS ###########################
         e.BOMB_DROPPED : 0,
         e.BOMB_EXPLODED : 0,
+        e.OPPONENT_ELIMINATED: 0,
         ############### CUSTOM EVENTS ##############################
         'DEC_COIN_DIST': 80,
         "INC_COIN_DIST": -80,
@@ -35,8 +36,11 @@ class ClassicModel(BaseQLearningModel):
         "INC_BOMB_DIST": 100,
         "KEEP_BOMB_DIST": -20,
         "GOOD_BOMB": 600,
+        "VERY_GOOD_BOMB": 800,
         "BAD_BOMB": -800,
         "SURVIVED_BOMB": 100,
+        "BOMB_AND_ESCAPE": 800,
+        "BOMB_NO_ESCAPE" : -1400
     }
 
 
@@ -52,19 +56,20 @@ class ClassicModel(BaseQLearningModel):
         BaseQLearningModel.__init__(self, logger, max_feature_size, path_q_table, path_seen_representations)
 
     ############### Necessary Overwrites ##############################################
-    def compute_additional_rewards(self, events, new_state, old_state):
+    def compute_additional_rewards(self, events, new_state, old_state, action, short_memory):
         """
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
         """
-        events = self.addSurrivedABombEvent(events,old_state)
+        events = self.addSurrivedABombEvent(events, old_state)
         events = self.addCoinDistanceEvents(events, new_state, old_state)
         events = self.addBombDistanceEvents(events,new_state,old_state)
         events = self.addCrateDistanceEvents(events, new_state, old_state)
         events = self.placedBombEvent(events,new_state)
+        events = self.add_escapable_bomb_event(events, old_state, new_state, action, short_memory)
         return events
 
-    def placedBombEvent(self,events,new_state):
+    def placedBombEvent(self,events,new_state,old_state):
         agentPos = new_state['self'][3]
         field = new_state['field']
 
@@ -87,6 +92,26 @@ class ClassicModel(BaseQLearningModel):
         if own_bomb==False:
             return events
 
+        # check if a bomb was placed directly besides an opponent
+        for opponent in old_state['others']:
+            opponent_position = opponent[3]
+
+            if agentPos[0]+1 == opponent_position[0] and agentPos[1] == opponent_position[1]:
+                events.append("VERY_GOOD_BOMB")
+                return events
+
+            if agentPos[0]-1 == opponent_position[0] and agentPos[1] == opponent_position[1]:
+                events.append("VERY_GOOD_BOMB")
+                return events
+
+            if agentPos[0] == opponent_position[0] and agentPos[1]+1 == opponent_position[1]:
+                events.append("VERY_GOOD_BOMB")
+                return events
+
+            if agentPos[0] == opponent_position[0] and agentPos[1]-1 == opponent_position[1]:
+                events.append("VERY_GOOD_BOMB")
+                return events
+
         if field[agentPos[0]+1][agentPos[1]] == 1:
             events.append("GOOD_BOMB")
             return events
@@ -105,6 +130,62 @@ class ClassicModel(BaseQLearningModel):
 
         events.append("BAD_BOMB")
         return events
+
+    def add_escapable_bomb_event(self,events, old_state, new_state, action, memory ):
+        """
+        The idea is to punish any move that would lead to one no loger being able to escape a bomb
+        """
+        # at least 2 moves need to be played
+        if len(memory) < 2:
+            return events
+
+        memory_copy = memory.copy()
+        self.logger.info("")
+        lastMove = memory_copy.popleft()
+        secondLastMove = memory_copy.popleft()
+
+        if secondLastMove[1] != "BOMB":
+            return events
+
+        if lastMove[1] == "WAIT" or e.INVALID_ACTION in events:
+            events.append("BOMB_NO_ESCAPE")
+            return events
+
+        new_agent_position = new_state["self"][3]
+        new_field = new_state["field"]
+
+        # now one needs to check if the agent can still escape from the newly reached position
+        if lastMove == "UP" or lastMove == "DOWN":
+            if new_agent_position[1] % 2 == 1:
+                if new_field[new_agent_position[0]-1][new_agent_position[1]]==0:
+                    events.append("BOMB_AND_ESCAPE")
+                    return events
+                if new_field[new_agent_position[0]+1][new_agent_position[1]]==0:
+                    events.append("BOMB_AND_ESCAPE")
+                    return events
+
+            if new_field[new_agent_position[0]][new_agent_position[1]-1] != 0 or \
+                  new_field[new_agent_position[0]][new_agent_position[1]+1] != 0:
+                events.append("BOMB_NO_ESCAPE")
+                return events
+
+        # now one needs to check if the agent can still escape from the newly reached position
+        if lastMove == "LEFT" or lastMove == "RIGHT":
+            if new_agent_position[0] % 2 == 1:
+                if new_field[new_agent_position[0]][new_agent_position[1] - 1] == 0:
+                    events.append("BOMB_AND_ESCAPE")
+                    return events
+                if new_field[new_agent_position[0]][new_agent_position[1] + 1] == 0:
+                    events.append("BOMB_AND_ESCAPE")
+                    return events
+
+            if new_field[new_agent_position[0] - 1][new_agent_position[1]] != 0 or \
+                    new_field[new_agent_position[0] + 1][new_agent_position[1]] != 0:
+                events.append("BOMB_NO_ESCAPE")
+                return events
+
+        return events
+
 
     def addSurrivedABombEvent(self, events, old_state):
         if e.GOT_KILLED in events or e.KILLED_SELF in events:
@@ -132,14 +213,18 @@ class ClassicModel(BaseQLearningModel):
         #self.logger.info("new_distance: "+  str(new_distance))
 
         if old_distance < new_distance:
+            if old_distance > 4:
+                return events
             events.append("INC_BOMB_DIST")
             return events
 
         if new_distance < old_distance:
+            if new_distance > 4:
+                return events
             events.append("DEC_BOMB_DIST")
             return events
 
-        events.append("KEEP_BOMB_DIST")
+        #events.append("KEEP_BOMB_DIST")
         return events
 
 
@@ -271,10 +356,7 @@ class ClassicModel(BaseQLearningModel):
         #print(events)
         for event in events:
             reward += self.REWARDS[event]
-            if event == e.SURVIVED_ROUND:
-                self.logger.info("STAYING ALIVEEEEEEEEEEEEEEEEE")
-        #print(reward)
-        #time.sleep(5)
+        self.logger.info(events)
         return reward
 
     def calculateFeaturesFromState(self, state):
@@ -287,7 +369,7 @@ class ClassicModel(BaseQLearningModel):
         pos_agent = (state['self'])[3]
         coins = state['coins']
         field = state['field']
-        explosion_map = state['explosion_map']
+        explosionMap = state['explosion_map']
         bombPos = None
 
         if len(state["bombs"]) > 0:
@@ -299,8 +381,8 @@ class ClassicModel(BaseQLearningModel):
 
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_coin(pos_agent, coins, field))
-        # adds four feature
-        encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field, explosion_map))
+        # adds eight feature
+        encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field, explosionMap))
         #adds one feature
         encoded_state = np.append(encoded_state, self.bombing_effective_feature(state['self'],field,opponent_positions))
         # adds one feature
@@ -309,7 +391,8 @@ class ClassicModel(BaseQLearningModel):
         encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, bombPos))
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_crate(pos_agent, field))
-        #print("horizontal" + str(encoded_state[0]) + "vertical" + str(encoded_state[1]))
+        # adds two features
+        encoded_state = np.append(encoded_state, self.calc_distance_and_direction_opponent(pos_agent, field, opponent_positions))
         return encoded_state
 
     def calc_distance_and_direction_coin(self, pos_agent, coins, field):
@@ -354,9 +437,6 @@ class ClassicModel(BaseQLearningModel):
             elif pos_agent[1] > best_coin[1]:
                 feature[1] = 1
 
-            '''
-            some debug stuff
-            '''
             return feature
 
     def calc_distance_and_direction_crate(self, pos_agent, field):
@@ -404,16 +484,51 @@ class ClassicModel(BaseQLearningModel):
             elif pos_agent[1] > best_crate[1]:
                 feature[1] = 1
 
+            return feature
+
+    def calc_distance_and_direction_opponent(self, pos_agent, field, opponents_pos):
             '''
-            some debug stuff
+            Simple encoding -1, 0, 1 for Left, no_x, Right
+                            -1, 0, 1 for Down, no_y, Up
             '''
-            # print("closest coin:" +str(closest_coin)+"distance:"+str(best_distance))
-            # print("horizontal_distance:"+str(hor_distance),"vertical_distance:"+str(ver_distance))
+            feature = np.zeros((2))
+            overall_dist = 1000
+            best_opponent = None
+
+            for opponent in opponents_pos:
+
+                x_dist = abs(pos_agent[0] - opponent[0])
+                y_dist = abs(pos_agent[1] - opponent[1])
+                total_dist = x_dist+y_dist
+
+                # one now needs to account for blocks in the way of the coin
+                if x_dist==0 and (pos_agent[0] % 2) == 0:
+                    #then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                    total_dist += 2
+
+                if y_dist == 0 and (pos_agent[1] % 2) == 0:
+                    # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                    total_dist += 2
+
+                if(total_dist < overall_dist):
+                    overall_dist = total_dist
+                    best_opponent = opponent
+
+            if pos_agent[0] < best_opponent[0]:
+                feature[0] = -1
+            elif pos_agent[0] > best_opponent[0]:
+                feature[0] = 1
+
+            if pos_agent[1] < best_opponent[1]:
+                feature[1] = -1
+            elif pos_agent[1] > best_opponent[1]:
+                feature[1] = 1
+
             return feature
 
     def calc_surrounding_features(self,pos_agent, field, explosion_map):
         """
-        Calculatiing the surrounding features far a given state
+        Calculating the surrounding features far a given state
 
         feature[0] = left
         feature[1] = right
@@ -421,7 +536,7 @@ class ClassicModel(BaseQLearningModel):
         feature[3] = up
         """
         #self.logger.info("started with the following agent position: "+str(pos_agent))
-        feature = np.zeros((4))
+        feature = np.zeros((8))
         x = pos_agent[0]
         y = pos_agent[1]
 
@@ -430,7 +545,27 @@ class ClassicModel(BaseQLearningModel):
         feature[2] = field[x][y + 1]
         feature[3] = field[x][y - 1]
 
-        explosions=np.zeros((4))
+        if x-2 < 0 or x-2 > 16:
+            feature[4] = -1
+        else:
+            feature[4] = field[x - 2][y]
+
+        if x+2 < 0 or x+2 > 16:
+            feature[5] = -1
+        else:
+            feature[5] = field[x + 2][y]
+
+        if y-2 < 0 or y-2 > 16:
+            feature[6] = -1
+        else:
+            feature[6] = field[x][y - 2]
+
+        if y+2 < 0 or y+2 > 16:
+            feature[7] = -1
+        else:
+            feature[7] = field[x][y + 2]
+
+        explosions = np.zeros((8))
 
         explosions[0] = explosion_map[x - 1][y]
         explosions[1] = explosion_map[x + 1][y]
@@ -521,11 +656,11 @@ class ClassicModel(BaseQLearningModel):
 
     def find_possible_moves(self, position, field):
         x,y = position
-        moves=[]
-        if(field [x+1][y] == 0):
+        moves = []
+        if field [x+1][y] == 0:
             moves.append("RIGHT")
 
-        if(field [x-1][y] == 0):
+        if field [x-1][y] == 0:
             moves.append("LEFT")
 
         if(field [x][y-1] == 0):

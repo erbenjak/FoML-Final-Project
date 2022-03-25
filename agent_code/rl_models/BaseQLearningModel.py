@@ -18,7 +18,7 @@ class BaseQLearningModel(BaseModel):
     EPSILON_DECAY_PARAM_1 = 0.5
     EPSILON_DECAY_PARAM_2 = 0.2
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 1000
+    NUM_ROUNDS_TRAINING = 5000
 
     #the max_feature_size determines all possible featurized states
     max_feature_size = -1
@@ -173,22 +173,22 @@ class BaseQLearningModel(BaseModel):
             waiting = (np.all(hist1[0] == hist2[0]) and hist1[1] == hist2[1] and hist1[1]=='WAIT')
             if back_and_forth or waiting:
                 current_table_state = self.Q_TABLE[feature_ind]
-                self.logger.info(current_table_state)
+                #self.logger.info(current_table_state)
                 ### if the current state only contains 0s then we would divide by 0
                 if(np.all(current_table_state==0)):
                     current_table_state = current_table_state + 1
                 ### ckeck if negative values exist is so add smallest value to all values twice
-                self.logger.info(2 * np.min(current_table_state))
+                #self.logger.info(2 * np.min(current_table_state))
                 if np.any(current_table_state < 0):
                     current_table_state = current_table_state + (2 * abs(np.min(current_table_state)))
                 ### preventing the dropping of random bombs
-                self.logger.info(current_table_state)
+                #self.logger.info(current_table_state)
                 current_table_state[5] = 0
                 ### probabilities are determined by dividing through the sum
                 probabilities = current_table_state / np.sum(current_table_state)
-                self.logger.info("Calculated Probabilities : "+str(probabilities))
+                #self.logger.info("Calculated Probabilities : "+str(probabilities))
                 action = np.random.choice(self.ACTIONS, p=probabilities)
-                self.logger.info("Prevented a learning loop via a softmax function")
+                #self.logger.info("Prevented a learning loop via a softmax function")
                 return action
 
         return None
