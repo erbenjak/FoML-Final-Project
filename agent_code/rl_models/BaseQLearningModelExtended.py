@@ -4,6 +4,7 @@ import os.path
 from .BaseModel import BaseModel
 import random
 import math
+import time
 """
     Manages the Basic Q-Learning processes while leaving the feature and reward calculations to the concreate agent
     implementations.  
@@ -32,8 +33,8 @@ class BaseQLearningModel(BaseModel):
     EPSILON_DECAY_PARAM_1 = 0.5
     EPSILON_DECAY_PARAM_2 = 0.2
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 5000
-    DISTANCE_THRESHOLD = 4
+    NUM_ROUNDS_TRAINING = 10000
+    DISTANCE_THRESHOLD = 6
 
     #the max_feature_size determines all possible featurized states
     max_feature_size = -1
@@ -131,8 +132,8 @@ class BaseQLearningModel(BaseModel):
             (1 - self.ALPHA) * self.Q_VALUES[index_q_table_old][action_index] + \
             self.ALPHA * (reward + self.GAMMA * followup_reward)
 
-        self.logger.info("old state encountered: " + str(features_old))
-        self.logger.info("new state encountered: " + str(features_new))
+        #self.logger.info("old state encountered: " + str(features_old))
+        #self.logger.info("new state encountered: " + str(features_new))
 
 
     def add_new_state(self,feature_representation):
@@ -148,8 +149,8 @@ class BaseQLearningModel(BaseModel):
             self.logger.info("nearest -neighbour provides the initial values!")
 
         # store new initial result
-        self.logger.info(self.SEEN_FEATURES)
-        self.logger.info(self.SEEN_FEATURES.shape)
+        #self.logger.info(self.SEEN_FEATURES)
+        #self.logger.info(self.SEEN_FEATURES.shape)
 
         self.SEEN_FEATURES = np.append(self.SEEN_FEATURES, np.expand_dims(feature_representation, axis=0), axis=0)
         self.Q_VALUES = np.append(self.Q_VALUES, np.expand_dims(move_values, axis=0), axis=0)
@@ -264,32 +265,33 @@ class BaseQLearningModel(BaseModel):
             np.random.shuffle(possible_move_indecies)
             move = possible_move_indecies[0]
         chosen_action = self.ACTIONS[int(move)]
-
         if train:
             if random.random() < self.get_epsilon(state['round']):
                 action_chosen = self.getActions()[int(random.randint(0, 5))]
                 self.add_move_to_memory(feature_representation, action_chosen)
                 chosen_action = action_chosen
-            else:
-                ###prevent getting stuck:
-                action = self.preventOverLearning(state)
-                if action is not None:
-                    chosen_action = action
+
+            # prevent getting stuck:
+        action = self.prevent_getting_stuck(state)
+        if action is not None:
+            chosen_action = action
 
         self.add_move_to_memory(feature_representation, chosen_action)
-
-        #self.logger.info("The current short memory looks as follows:")
-        #self.logger.info(self.memory_short)
         return chosen_action
+
 
     def find_clossest_guess(self,feature_representation):
         if (self.SEEN_FEATURES.size == 0):
+            self.logger.info("debug" + str(self.SEEN_FEATURES.size))
             return None, self.DISTANCE_THRESHOLD+1
 
-        differences = np.subtract(self.SEEN_FEATURES, feature_representation)
-        differences_squared = np.square(differences)
-        differences_final = np.sum(differences_squared, axis=1)
+        weights = np.ndarray(shape=feature_representation.shape)
+        weights = np.ones(shape=feature_representation.shape)
 
+        differences = (self.SEEN_FEATURES[:] != feature_representation)*weights
+        #self.logger.info('Single Distance: SEEN,NEW,DISTANCE:' + str(self.SEEN_FEATURES[0]) + str(feature_representation) + str(differences[0]))
+        differences_final = np.sum(np.square(differences), axis=1)
+        #self.logger.info("Distance" + str(differences_final))
         #just pick the first with the smallest distance
         index_smallest = np.argmin(differences_final)
         return self.Q_VALUES[index_smallest],differences_final[index_smallest]
@@ -325,14 +327,14 @@ class BaseQLearningModel(BaseModel):
             waiting = (np.all(hist1[0] == hist2[0]) and hist1[1] == hist2[1] and hist1[1]=='WAIT')
             if back_and_forth or waiting:
                 current_table_state = self.Q_VALUES[feature_ind]
-                self.logger.info(current_table_state)
+                #self.logger.info(current_table_state)
                 ### if the current state only contains 0s then we would divide by 0
                 if(np.all(current_table_state==0)):
                     current_table_state = current_table_state + 1
                 if np.any(current_table_state < 0):
                     current_table_state = current_table_state + (2 * abs(np.min(current_table_state)))
                 ### preventing the dropping of random bombs
-                self.logger.info(current_table_state)
+                #self.logger.info(current_table_state)
                 current_table_state[5] = 0
                 ### probabilities are determined by dividing through the sum
                 probabilities = current_table_state / np.sum(current_table_state)
@@ -357,3 +359,41 @@ class BaseQLearningModel(BaseModel):
             self.logger.info("Saving current state of the q-table")
             np.save(path_q_table, self.Q_VALUES)
             np.save(path_seen_rep, self.SEEN_FEATURES)
+
+    def prevent_getting_stuck(self, state):
+        feature = self.calculateFeaturesFromState(state)
+        index_possibilities = np.where((self.SEEN_FEATURES == feature).all(axis=1))
+
+        if len(index_possibilities[0]) != 1:
+            self.logger.info("FATAL ERROR FEATURE IS STORED " + str(len(index_possibilities[0])) + " TIMES")
+            self.logger.info(feature)
+            raise ValueError('q table is in an illegal state')
+
+        feature_ind = index_possibilities[0][0]
+
+        short_term_memory = self.memory_short.copy()
+        if len(short_term_memory) > 4:
+            hist1 = short_term_memory.pop()
+            hist2 = short_term_memory.pop()
+            hist3 = short_term_memory.pop()
+            hist4 = short_term_memory.pop()
+
+            back_and_forth = (hist1[1] == hist3[1] and hist2[1] == hist4[1] and hist1[1] != hist2[1])
+            waiting = (np.all(hist1[0] == hist2[0]) and hist1[1] == hist2[1] and hist1[1] == 'WAIT')
+            if back_and_forth or waiting:
+                current_table_state = self.Q_VALUES[feature_ind]
+
+                # if the current state only contains 0s then we would divide by 0
+                if np.all(current_table_state == 0):
+                    current_table_state = current_table_state + 1
+                if np.any(current_table_state < 0):
+                    current_table_state = current_table_state + (2 * abs(np.min(current_table_state)))
+
+                # preventing the dropping of random bombs
+                current_table_state[5] = 0
+
+                # probabilities are determined by dividing through the sum
+                probabilities = current_table_state / np.sum(current_table_state)
+                action = np.random.choice(self.ACTIONS, p=probabilities)
+                return action
+        return None

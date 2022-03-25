@@ -1,6 +1,8 @@
 import events as e
 import numpy as np
 import random
+import time
+
 from ..rl_models.BaseQLearningModelExtended import BaseQLearningModel
 
 class ClassicModel(BaseQLearningModel):
@@ -58,6 +60,7 @@ class ClassicModel(BaseQLearningModel):
         events = self.addSurrivedABombEvent(events,old_state)
         events = self.addCoinDistanceEvents(events, new_state, old_state)
         events = self.addBombDistanceEvents(events,new_state,old_state)
+        events = self.addCrateDistanceEvents(events, new_state, old_state)
         events = self.placedBombEvent(events,new_state)
         return events
 
@@ -122,20 +125,11 @@ class ClassicModel(BaseQLearningModel):
             # bomb has exploded therefore other events apply
             return events
 
-        if len(new_state["bombs"]) > 1:
-            raise NotImplementedError("add bomb distance events can't handle multiple bombs so far")
+        old_distance = self.calc_bomb_dist(old_state['self'][3], old_state['bombs'])
+        new_distance = self.calc_bomb_dist(new_state['self'][3], new_state['bombs'])
 
-        clossestBombOld = old_state["bombs"][0]
-        clossestBombCoordinatesOld = clossestBombOld[0]
-
-        clossestBombNew = new_state["bombs"][0]
-        clossestBombCoordinatesNew = clossestBombNew[0]
-
-        old_distance = self.calc_bomb_dist(old_state['self'][3], clossestBombCoordinatesOld)
-        new_distance = self.calc_bomb_dist(new_state['self'][3], clossestBombCoordinatesNew)
-
-        self.logger.info("old_distance: "+  str(old_distance))
-        self.logger.info("new_distance: "+  str(new_distance))
+        #self.logger.info("old_distance: "+  str(old_distance))
+        #self.logger.info("new_distance: "+  str(new_distance))
 
         if old_distance < new_distance:
             events.append("INC_BOMB_DIST")
@@ -173,6 +167,9 @@ class ClassicModel(BaseQLearningModel):
     def addCrateDistanceEvents(self, events, new_state, old_state):
         crates_old = np.argwhere(old_state['field'] == 1)
         crates_new = np.argwhere(new_state['field'] == 1)
+        #print("crates old position:" + str(crates_old))
+        if len(crates_old) == 0:
+            return events
 
         old_distance = self.calc_crate_dist(old_state['self'][3], crates_old)
         new_distance = self.calc_crate_dist(new_state['self'][3], crates_new)
@@ -188,12 +185,12 @@ class ClassicModel(BaseQLearningModel):
         return events
 
     @staticmethod
-    def calc_bomb_dist(agent, crates):
+    def calc_crate_dist(agent, crates):
         if (len(crates) == 0):
             return 0
+        overall_dist = 1000
 
         for crate in crates:
-            overall_dist = 1000
 
             x_dist = abs(agent[0] - crate[0])
             y_dist = abs(agent[1] - crate[1])
@@ -210,40 +207,47 @@ class ClassicModel(BaseQLearningModel):
 
             if (total_dist < overall_dist):
                 overall_dist = total_dist
+        #print("crate dist:" + str(overall_dist))
         return overall_dist
 
     @staticmethod
-    def calc_bomb_dist(agent,bomb):
+    def calc_bomb_dist(agent,bombs):
+        if (len(bombs) == 0):
+            return 0
+        overall_dist = 1000
+        for bomb in bombs:
 
-        x_dist = abs(agent[0] - bomb[0])
-        y_dist = abs(agent[1] - bomb[1])
-        total_dist = x_dist + y_dist
-        # one now needs to account for blocks in the way of the coin
+            x_dist = abs(agent[0] - bomb[0][0])
+            y_dist = abs(agent[1] - bomb[0][1])
+            total_dist = x_dist + y_dist
+            # one now needs to account for blocks in the way of the coin
 
-        if x_dist == 0 and (agent[0] % 2) == 0:
-            # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
-            total_dist += 2
+            if x_dist == 0 and (agent[0] % 2) == 0 and y_dist != 0:
+                # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                total_dist += 2
 
-        if y_dist == 0 and (agent[1] % 2) == 0:
-            # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
-            total_dist += 2
+            if y_dist == 0 and (agent[1] % 2) == 0 and x_dist != 0:
+                # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                total_dist += 2
 
-        return total_dist
+            if (total_dist < overall_dist):
+                overall_dist = total_dist
+        #print("Bomb distance:" + str(overall_dist))
+        return overall_dist
 
 
     @staticmethod
     def calc_coin_dist(agent,coins):
         if(len(coins)==0):
             return 0
+        overall_dist = 1000
 
         for coin in coins:
-            overall_dist=1000
 
             x_dist = abs(agent[0] - coin[0])
             y_dist = abs(agent[1] - coin[1])
             total_dist = x_dist + y_dist
             # one now needs to account for blocks in the way of the coin
-
             if x_dist == 0 and (agent[0] % 2) == 0:
                 # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
                 total_dist += 2
@@ -263,10 +267,14 @@ class ClassicModel(BaseQLearningModel):
         The return may be any float.
         """
         reward = 0
+        self.logger.info(str(events))
+        #print(events)
         for event in events:
             reward += self.REWARDS[event]
             if event == e.SURVIVED_ROUND:
                 self.logger.info("STAYING ALIVEEEEEEEEEEEEEEEEE")
+        #print(reward)
+        #time.sleep(5)
         return reward
 
     def calculateFeaturesFromState(self, state):
@@ -279,6 +287,7 @@ class ClassicModel(BaseQLearningModel):
         pos_agent = (state['self'])[3]
         coins = state['coins']
         field = state['field']
+        explosion_map = state['explosion_map']
         bombPos = None
 
         if len(state["bombs"]) > 0:
@@ -291,7 +300,7 @@ class ClassicModel(BaseQLearningModel):
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_coin(pos_agent, coins, field))
         # adds four feature
-        encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field))
+        encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field, explosion_map))
         #adds one feature
         encoded_state = np.append(encoded_state, self.bombing_effective_feature(state['self'],field,opponent_positions))
         # adds one feature
@@ -300,12 +309,13 @@ class ClassicModel(BaseQLearningModel):
         encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, bombPos))
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_crate(pos_agent, field))
+        #print("horizontal" + str(encoded_state[0]) + "vertical" + str(encoded_state[1]))
         return encoded_state
 
     def calc_distance_and_direction_coin(self, pos_agent, coins, field):
             '''
             Simple encoding -1, 0, 1 for Left, no_x, Right
-                            -1, 0, 1 for Down, no_y, Up
+                            -1, 0, 1 for Up, no_y, Down
             '''
             feature = np.zeros((2))
             overall_dist = 1000
@@ -347,20 +357,22 @@ class ClassicModel(BaseQLearningModel):
             '''
             some debug stuff
             '''
-            # print("closest coin:" +str(closest_coin)+"distance:"+str(best_distance))
-            # print("horizontal_distance:"+str(hor_distance),"vertical_distance:"+str(ver_distance))
             return feature
 
     def calc_distance_and_direction_crate(self, pos_agent, field):
             '''
             Simple encoding -1, 0, 1 for Left, no_x, Right
-                            -1, 0, 1 for Down, no_y, Up
+                            -1, 0, 1 for Up, no_y, Down
             '''
             feature = np.zeros((2))
             overall_dist = 1000
             best_crate = None
 
             crates = np.argwhere(field == 1)
+
+            if len(crates) == 0:
+                self.logger.info("No more crates left to destroy ")
+                return feature
 
             for crate in crates:
                 x_dist = abs(pos_agent[0] - crate[0])
@@ -399,7 +411,7 @@ class ClassicModel(BaseQLearningModel):
             # print("horizontal_distance:"+str(hor_distance),"vertical_distance:"+str(ver_distance))
             return feature
 
-    def calc_surrounding_features(self,pos_agent, field):
+    def calc_surrounding_features(self,pos_agent, field, explosion_map):
         """
         Calculatiing the surrounding features far a given state
 
@@ -412,10 +424,23 @@ class ClassicModel(BaseQLearningModel):
         feature = np.zeros((4))
         x = pos_agent[0]
         y = pos_agent[1]
+
         feature[0] = field[x - 1][y]
         feature[1] = field[x + 1][y]
         feature[2] = field[x][y + 1]
         feature[3] = field[x][y - 1]
+
+        explosions=np.zeros((4))
+
+        explosions[0] = explosion_map[x - 1][y]
+        explosions[1] = explosion_map[x + 1][y]
+        explosions[2] = explosion_map[x][y + 1]
+        explosions[3] = explosion_map[x][y - 1]
+
+        for i in np.arange(len(feature)):
+            if int(feature[i]) != -1 and int(explosions[i]) != 0:
+                feature[i] = 2
+
         return feature
 
     def bombing_effective_feature(self,agent,field,opponent_positions):
@@ -433,10 +458,10 @@ class ClassicModel(BaseQLearningModel):
             if abs(agent_x-opponent_position[0]) == 1 and agent_y==opponent_position[1]:
                 return 1
 
-            if agent_x==opponent_position[0] and abs(agent_x-opponent_position[0]) == 1:
+            if agent_x==opponent_position[0] and abs(agent_y-opponent_position[1]) == 1:
                 return 1
 
-        positions_to_check=[(agent_x+1,agent_y),(agent_x-1,agent_y),(agent_x,agent_y+1),(agent_x,agent_y+1)]
+        positions_to_check=[(agent_x+1,agent_y),(agent_x-1,agent_y),(agent_x,agent_y-1),(agent_x,agent_y+1)]
 
         for position in positions_to_check:
             if  field[position[0]][position[1]] == 1:
@@ -448,7 +473,7 @@ class ClassicModel(BaseQLearningModel):
     def bomb_direction_feature(self, pos_agent, bomb):
         '''
         Simple encoding -1, 0, 1 for Left, no_x, Right
-        -1, 0, 1 for Down, no_y, Up
+        -1, 0, 1 for Up, no_y, Down
         '''
         feature = np.zeros((2))
 
@@ -470,7 +495,7 @@ class ClassicModel(BaseQLearningModel):
         """
         -1 no bomb
         0 not in bomb radius
-        1 inside bomb raius
+        1 inside bomb radius
         """
         if bomb is None:
             return -1
@@ -503,8 +528,11 @@ class ClassicModel(BaseQLearningModel):
         if(field [x-1][y] == 0):
             moves.append("LEFT")
 
-        if(field [x][y+1] == 0):
+        if(field [x][y-1] == 0):
             moves.appen("UP")
+
+        if (field[x][y+1] == 0):
+            moves.appen("DOWN")
 
 
     @staticmethod
