@@ -30,8 +30,8 @@ class BaseQLearningModel(BaseModel):
     EPSILON_DECAY_PARAM_1 = 0.5
     EPSILON_DECAY_PARAM_2 = 0.2
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 10000
-    DISTANCE_THRESHOLD = 6
+    NUM_ROUNDS_TRAINING = 5000
+    DISTANCE_THRESHOLD = 3
 
     # the max_feature_size determines all possible feature-states
     max_feature_size = -1
@@ -191,9 +191,6 @@ class BaseQLearningModel(BaseModel):
         # here an epsilon greedy policy is required
         # for now we assume, that 1000 games will be played - hard coded
         # furthermore we assume, that we want to start of at about 1 and end at about 5%
-
-        return 0.1
-
         standardized_round = (round - self.EPSILON_DECAY_PARAM_1 * self.NUM_ROUNDS_TRAINING) / \
                              (self.EPSILON_DECAY_PARAM_2 * self.NUM_ROUNDS_TRAINING)
         cosh = np.cosh(math.exp(-standardized_round))

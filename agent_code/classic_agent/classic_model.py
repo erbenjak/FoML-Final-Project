@@ -18,7 +18,7 @@ class ClassicModel(BaseQLearningModel):
         ###############
         e.SURVIVED_ROUND: 100,
         e.KILLED_SELF: -1600,
-        e.COIN_COLLECTED: 300,
+        e.COIN_COLLECTED: 1000,
         e.CRATE_DESTROYED: 200,
         e.KILLED_OPPONENT: 2000,
         e.GOT_KILLED: -700,
@@ -28,18 +28,18 @@ class ClassicModel(BaseQLearningModel):
         e.BOMB_EXPLODED : 0,
         e.OPPONENT_ELIMINATED: 0,
         ############### CUSTOM EVENTS ##############################
-        'DEC_COIN_DIST': 80,
-        "INC_COIN_DIST": -80,
-        'DEC_CRATE_DIST': 60,
-        "INC_CRATE_DIST": -60,
-        'DEC_BOMB_DIST': -100,
-        "INC_BOMB_DIST": 100,
-        "KEEP_BOMB_DIST": -20,
+        'DEC_COIN_DIST': 100,
+        "INC_COIN_DIST": -100,
+        'DEC_CRATE_DIST': 90,
+        "INC_CRATE_DIST": -90,
+        'DEC_BOMB_DIST': -240,
+        "INC_BOMB_DIST": 200,
+        "KEEP_BOMB_DIST": -200,
         "GOOD_BOMB": 600,
         "VERY_GOOD_BOMB": 800,
         "BAD_BOMB": -800,
         "SURVIVED_BOMB": 100,
-        "BOMB_AND_ESCAPE": 800,
+        "BOMB_AND_ESCAPE": 1000,
         "BOMB_NO_ESCAPE" : -1400
     }
 
@@ -65,8 +65,8 @@ class ClassicModel(BaseQLearningModel):
         events = self.addCoinDistanceEvents(events, new_state, old_state)
         events = self.addBombDistanceEvents(events,new_state,old_state)
         events = self.addCrateDistanceEvents(events, new_state, old_state)
-        events = self.placedBombEvent(events,new_state)
-        events = self.add_escapable_bomb_event(events, old_state, new_state, action, short_memory)
+        events = self.placedBombEvent(events, new_state, old_state)
+        events = self.add_escapable_bomb_event(events, new_state, old_state, short_memory)
         return events
 
     def placedBombEvent(self,events,new_state,old_state):
@@ -131,7 +131,7 @@ class ClassicModel(BaseQLearningModel):
         events.append("BAD_BOMB")
         return events
 
-    def add_escapable_bomb_event(self,events, old_state, new_state, action, memory ):
+    def add_escapable_bomb_event(self,events, new_state, old_state, memory ):
         """
         The idea is to punish any move that would lead to one no loger being able to escape a bomb
         """
@@ -147,42 +147,17 @@ class ClassicModel(BaseQLearningModel):
         if secondLastMove[1] != "BOMB":
             return events
 
-        if lastMove[1] == "WAIT" or e.INVALID_ACTION in events:
+        if new_state["self"][3] == old_state["self"][3]:
             events.append("BOMB_NO_ESCAPE")
             return events
 
-        new_agent_position = new_state["self"][3]
-        new_field = new_state["field"]
+        feature_escape_bomb = self.calculateFeaturesFromState(new_state)[6:10]
+        not_escaped = np.all(feature_escape_bomb == -1)
 
-        # now one needs to check if the agent can still escape from the newly reached position
-        if lastMove == "UP" or lastMove == "DOWN":
-            if new_agent_position[1] % 2 == 1:
-                if new_field[new_agent_position[0]-1][new_agent_position[1]]==0:
-                    events.append("BOMB_AND_ESCAPE")
-                    return events
-                if new_field[new_agent_position[0]+1][new_agent_position[1]]==0:
-                    events.append("BOMB_AND_ESCAPE")
-                    return events
-
-            if new_field[new_agent_position[0]][new_agent_position[1]-1] != 0 or \
-                  new_field[new_agent_position[0]][new_agent_position[1]+1] != 0:
-                events.append("BOMB_NO_ESCAPE")
-                return events
-
-        # now one needs to check if the agent can still escape from the newly reached position
-        if lastMove == "LEFT" or lastMove == "RIGHT":
-            if new_agent_position[0] % 2 == 1:
-                if new_field[new_agent_position[0]][new_agent_position[1] - 1] == 0:
-                    events.append("BOMB_AND_ESCAPE")
-                    return events
-                if new_field[new_agent_position[0]][new_agent_position[1] + 1] == 0:
-                    events.append("BOMB_AND_ESCAPE")
-                    return events
-
-            if new_field[new_agent_position[0] - 1][new_agent_position[1]] != 0 or \
-                    new_field[new_agent_position[0] + 1][new_agent_position[1]] != 0:
-                events.append("BOMB_NO_ESCAPE")
-                return events
+        if not_escaped:
+            events.append("BOMB_NO_ESCAPE")
+        else:
+            events.append("BOMB_AND_ESCAPE")
 
         return events
 
@@ -206,11 +181,16 @@ class ClassicModel(BaseQLearningModel):
             # bomb has exploded therefore other events apply
             return events
 
-        old_distance = self.calc_bomb_dist(old_state['self'][3], old_state['bombs'])
-        new_distance = self.calc_bomb_dist(new_state['self'][3], new_state['bombs'])
+        bombPosOld=[]
+        for bomb in old_state['bombs']:
+            bombPosOld.append(bomb[0])
 
-        #self.logger.info("old_distance: "+  str(old_distance))
-        #self.logger.info("new_distance: "+  str(new_distance))
+        bombPosNew=[]
+        for bomb in new_state['bombs']:
+            bombPosNew.append(bomb[0])
+
+        old_distance, closestBombPosOld = self.calc_clossest_bomb_dist(old_state['self'][3], bombPosOld)
+        new_distance, closestBombPosNew = self.calc_clossest_bomb_dist(new_state['self'][3], bombPosNew)
 
         if old_distance < new_distance:
             if old_distance > 4:
@@ -224,7 +204,7 @@ class ClassicModel(BaseQLearningModel):
             events.append("DEC_BOMB_DIST")
             return events
 
-        #events.append("KEEP_BOMB_DIST")
+        events.append("KEEP_BOMB_DIST")
         return events
 
 
@@ -296,14 +276,16 @@ class ClassicModel(BaseQLearningModel):
         return overall_dist
 
     @staticmethod
-    def calc_bomb_dist(agent,bombs):
-        if (len(bombs) == 0):
-            return 0
+    def calc_clossest_bomb_dist(agent, bombpositions):
+        if (len(bombpositions) == 0):
+            return 0, None
         overall_dist = 1000
-        for bomb in bombs:
+        bestBombPos = None
 
-            x_dist = abs(agent[0] - bomb[0][0])
-            y_dist = abs(agent[1] - bomb[0][1])
+        for bombpos in bombpositions:
+
+            x_dist = abs(agent[0] - bombpos[0])
+            y_dist = abs(agent[1] - bombpos[0])
             total_dist = x_dist + y_dist
             # one now needs to account for blocks in the way of the coin
 
@@ -317,8 +299,26 @@ class ClassicModel(BaseQLearningModel):
 
             if (total_dist < overall_dist):
                 overall_dist = total_dist
-        #print("Bomb distance:" + str(overall_dist))
-        return overall_dist
+                bestBombPos = bombpos
+
+        return overall_dist, bestBombPos
+
+    @staticmethod
+    def calc_bomb_distance(x, y, single_bomb_pos):
+        x_dist = abs(x - single_bomb_pos[0])
+        y_dist = abs(y - single_bomb_pos[0])
+        total_dist = x_dist + y_dist
+        # one now needs to account for blocks in the way of the coin
+
+        if x_dist == 0 and (x % 2) == 0 and y_dist != 0:
+            # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+            total_dist += 2
+
+        if y_dist == 0 and (y % 2) == 0 and x_dist != 0:
+            # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+            total_dist += 2
+
+        return total_dist
 
 
     @staticmethod
@@ -353,10 +353,8 @@ class ClassicModel(BaseQLearningModel):
         """
         reward = 0
         self.logger.info(str(events))
-        #print(events)
         for event in events:
             reward += self.REWARDS[event]
-        self.logger.info(events)
         return reward
 
     def calculateFeaturesFromState(self, state):
@@ -370,10 +368,12 @@ class ClassicModel(BaseQLearningModel):
         coins = state['coins']
         field = state['field']
         explosionMap = state['explosion_map']
-        bombPos = None
 
-        if len(state["bombs"]) > 0:
-            bombPos = state["bombs"][0][0]
+        bombPositions = []
+        for bomb in state ["bombs"]:
+            bombPositions.append(bomb[0])
+
+        distance, closestBombPos = self.calc_clossest_bomb_dist(pos_agent, bombPositions)
 
         opponent_positions=[]
         for opponent in state['others']:
@@ -381,14 +381,16 @@ class ClassicModel(BaseQLearningModel):
 
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_coin(pos_agent, coins, field))
-        # adds eight feature
+        # adds four feature
         encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field, explosionMap))
+        # adds four feature
+        encoded_state = np.append(encoded_state, self.calc_surrounding_escapability(pos_agent, field, closestBombPos,bombPositions, opponent_positions))
         #adds one feature
         encoded_state = np.append(encoded_state, self.bombing_effective_feature(state['self'],field,opponent_positions))
         # adds one feature
-        encoded_state = np.append(encoded_state, self.bomb_explodable_feature(pos_agent, bombPos))
+        encoded_state = np.append(encoded_state, self.bomb_explodable_feature(pos_agent, closestBombPos))
         # adds two features
-        encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, bombPos))
+        encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, closestBombPos))
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_crate(pos_agent, field))
         # adds two features
@@ -495,6 +497,9 @@ class ClassicModel(BaseQLearningModel):
             overall_dist = 1000
             best_opponent = None
 
+            if len(opponents_pos) == 0:
+                return feature
+
             for opponent in opponents_pos:
 
                 x_dist = abs(pos_agent[0] - opponent[0])
@@ -536,7 +541,7 @@ class ClassicModel(BaseQLearningModel):
         feature[3] = up
         """
         #self.logger.info("started with the following agent position: "+str(pos_agent))
-        feature = np.zeros((8))
+        feature = np.zeros((4))
         x = pos_agent[0]
         y = pos_agent[1]
 
@@ -545,27 +550,7 @@ class ClassicModel(BaseQLearningModel):
         feature[2] = field[x][y + 1]
         feature[3] = field[x][y - 1]
 
-        if x-2 < 0 or x-2 > 16:
-            feature[4] = -1
-        else:
-            feature[4] = field[x - 2][y]
-
-        if x+2 < 0 or x+2 > 16:
-            feature[5] = -1
-        else:
-            feature[5] = field[x + 2][y]
-
-        if y-2 < 0 or y-2 > 16:
-            feature[6] = -1
-        else:
-            feature[6] = field[x][y - 2]
-
-        if y+2 < 0 or y+2 > 16:
-            feature[7] = -1
-        else:
-            feature[7] = field[x][y + 2]
-
-        explosions = np.zeros((8))
+        explosions = np.zeros((4))
 
         explosions[0] = explosion_map[x - 1][y]
         explosions[1] = explosion_map[x + 1][y]
@@ -577,6 +562,234 @@ class ClassicModel(BaseQLearningModel):
                 feature[i] = 2
 
         return feature
+
+    def calc_surrounding_escapability(self,pos_agent, field, closestBombPos, bombPositions, opponentPositions):
+        """
+        Calculating the bomb escape-capability for surrounding fields
+        --> Meaning is it possible to escape the closest bomb from there
+        0   - no bomb or the agent is already escaped
+        1   - bomb and helps escape the agent
+        -1  - bomb and does not allow for escaping
+        feature[0] = left
+        feature[1] = right
+        feature[2] = down
+        feature[3] = up
+        """
+        #self.logger.info("started with the following agent position: "+str(pos_agent))
+        feature = np.zeros((4))
+
+        if closestBombPos is None:
+            return feature
+
+        x = pos_agent[0]
+        y = pos_agent[1]
+
+        x_bomb = closestBombPos[0]
+        y_bomb = closestBombPos[1]
+
+        feature[0] = -abs(field[x - 1][y])
+        feature[1] = -abs(field[x + 1][y])
+        feature[2] = -abs(field[x][y - 1])
+        feature[3] = -abs(field[x][y + 1])
+
+        currently_in_danger = self.inExplosionZone(x_bomb,y_bomb,x,y)
+
+        # if the agent is currently not in danger it is checked if one of his steps leads him into danger
+        if currently_in_danger is False:
+            if self.inExplosionZone(x_bomb, y_bomb, x-1, y):
+                feature[0] = -1
+
+            if self.inExplosionZone(x_bomb, y_bomb, x+1, y):
+                feature[1] = -1
+
+            if self.inExplosionZone(x_bomb, y_bomb, x, y-1):
+                feature[2] = -1
+
+            if self.inExplosionZone(x_bomb, y_bomb, x, y+1):
+                feature[3] = -1
+
+            return feature
+
+        #if a feature can be ruled out it is removed from the list and it's value is saved
+        feature_to_consider = [0, 1, 2, 3]
+
+        # check is any fields are not free
+        if not self.coordinates_are_free(x-1,y,bombPositions,field, opponentPositions):
+            feature[0] = -1
+            feature_to_consider.remove(0)
+
+        if not self.coordinates_are_free(x+1,y,bombPositions,field, opponentPositions):
+            feature[1] = -1
+            feature_to_consider.remove(1)
+
+        if not self.coordinates_are_free(x,y-1,bombPositions,field, opponentPositions):
+            feature[2] = -1
+            feature_to_consider.remove(2)
+
+        if not self.coordinates_are_free(x,y+1,bombPositions,field, opponentPositions):
+            feature[3] = -1
+            feature_to_consider.remove(3)
+
+        #return if all directions are blocked
+        if len(feature_to_consider) == 0:
+            return feature
+
+        # check if any of the surrounding fields allows for immediate escaping
+        if 0 in feature_to_consider:
+            if not self.inExplosionZone(x_bomb, y_bomb, x - 1, y):
+                feature[0] = 1
+                feature_to_consider.remove(0)
+
+        if 1 in feature_to_consider:
+            if not self.inExplosionZone(x_bomb, y_bomb, x + 1, y):
+                feature[1] = 1
+                feature_to_consider.remove(1)
+
+        if 2 in feature_to_consider:
+            if not self.inExplosionZone(x_bomb, y_bomb, x, y - 1):
+                feature[2] = 1
+                feature_to_consider.remove(2)
+
+        if 3 in feature_to_consider:
+            if not self.inExplosionZone(x_bomb, y_bomb, x, y + 1):
+                feature[3] = 1
+                feature_to_consider.remove(3)
+
+        # return if all directions are considered
+        if len(feature_to_consider) == 0:
+            return feature
+
+        # check running away in a straight line
+        for i in range(1,5):
+            if len(feature_to_consider) == 0:
+                break
+            # running left
+            if 0 in feature_to_consider:
+                # hitting a stop
+                if not self.coordinates_are_free(x-i, y, bombPositions, field, opponentPositions):
+                    feature[0] = -1
+                    feature_to_consider.remove(0)
+                else:
+                    if not self.inExplosionZone(x_bomb, y_bomb, x - i, y):
+                        feature[0] = 1
+                        feature_to_consider.remove(0)
+                    else:
+                        step_up_possible = self.coordinates_are_free(x-i, y+1, bombPositions, field, opponentPositions)
+                        step_down_possible = self.coordinates_are_free(x-i, y-1, bombPositions, field, opponentPositions)
+
+                        if step_up_possible or step_down_possible:
+                            feature[0] = 1
+                            feature_to_consider.remove(0)
+
+            # running right
+            if 1 in feature_to_consider:
+                # hitting a stop
+                if not self.coordinates_are_free(x + i, y, bombPositions, field, opponentPositions):
+                    feature[1] = -1
+                    feature_to_consider.remove(1)
+                else:
+                    if not self.inExplosionZone(x_bomb, y_bomb, x + i, y):
+                        feature[1] = 1
+                        feature_to_consider.remove(1)
+                    else:
+                        step_up_possible = self.coordinates_are_free(x + i, y + 1, bombPositions, field,
+                                                                     opponentPositions)
+                        step_down_possible = self.coordinates_are_free(x + i, y - 1, bombPositions, field,
+                                                                       opponentPositions)
+
+                        if step_up_possible or step_down_possible:
+                            feature[1] = 1
+                            feature_to_consider.remove(1)
+
+            # running up
+            if 2 in feature_to_consider:
+                # hitting a stop
+                if not self.coordinates_are_free(x, y - i, bombPositions, field, opponentPositions):
+                    feature[2] = -1
+                    feature_to_consider.remove(2)
+                else:
+                    if not self.inExplosionZone(x_bomb, y_bomb, x, y - i):
+                        feature[2] = 1
+                        feature_to_consider.remove(2)
+                    else:
+                        step_left_possible = self.coordinates_are_free(x - 1, y - i, bombPositions, field,
+                                                                     opponentPositions)
+                        step_right_possible = self.coordinates_are_free(x + 1, y - i, bombPositions, field,
+                                                                       opponentPositions)
+                        if step_left_possible or step_right_possible:
+                            feature[2] = 1
+                            feature_to_consider.remove(2)
+
+            # running down
+            if 3 in feature_to_consider:
+                # hitting a stop
+                if not self.coordinates_are_free(x, y + i, bombPositions, field, opponentPositions):
+                    feature[3] = -1
+                    feature_to_consider.remove(3)
+                else:
+                    if not self.inExplosionZone(x_bomb, y_bomb, x, y + i):
+                        feature[3] = 1
+                        feature_to_consider.remove(3)
+                    else:
+                        step_left_possible = self.coordinates_are_free(x - 1, y + i, bombPositions, field,
+                                                                     opponentPositions)
+                        step_right_possible = self.coordinates_are_free(x + 1, y + i, bombPositions, field,
+                                                                       opponentPositions)
+                        if step_left_possible or step_right_possible:
+                            feature[3] = 1
+                            feature_to_consider.remove(3)
+
+        self.logger.info("Calculated the following Escape-feature: " + str(feature))
+
+        if len(feature_to_consider) != 0:
+            raise ValueError("List of features to consider should be empty but is not: "+ str(len(feature_to_consider)))
+
+        return feature
+
+    @staticmethod
+    def inExplosionZone(x_bomb, y_bomb, pos_x, pos_y):
+        #on two different axes
+        if x_bomb != pos_x and y_bomb != pos_y:
+            return False
+
+        #identical
+        if x_bomb == pos_x and y_bomb == pos_y:
+            return True
+
+        if y_bomb == pos_y:
+            if y_bomb % 2 == 0:
+                return False
+
+            if abs(x_bomb - pos_x) > 3:
+                return False
+
+            return True
+
+        if x_bomb == pos_x:
+            if x_bomb % 2 == 0:
+                return False
+
+            if abs(y_bomb - pos_y) > 3:
+                return False
+
+            return True
+
+    @staticmethod
+    def coordinates_are_free(x,y,bomb_positions ,field, opponent_positions):
+
+        if(field[x][y]!=0):
+            return False
+
+        for single_bomb_pos in bomb_positions:
+            if single_bomb_pos[0]==x and single_bomb_pos[1]==y:
+                return False
+
+        for single_opponent_pos in opponent_positions:
+            if single_opponent_pos[0]==x and single_opponent_pos[1]==y:
+                return False
+
+        # field is free
+        return True
 
     def bombing_effective_feature(self,agent,field,opponent_positions):
         """
