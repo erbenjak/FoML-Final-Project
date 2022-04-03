@@ -9,7 +9,7 @@ import time
     implementations.  
 """
 class BaseQLearningModel(BaseModel):
-    NUMBER_FEATURES = 18
+    NUMBER_FEATURES = 20
     NUMBER_POSSIBLE_MOVES = 6
 
     """
@@ -27,11 +27,11 @@ class BaseQLearningModel(BaseModel):
     GAMMA = 0.9
     EPSILON_THRESHOLD = 0.05
     EPSILON_START = 1.1
-    EPSILON_DECAY_PARAM_1 = 0.5
-    EPSILON_DECAY_PARAM_2 = 0.2
+    EPSILON_DECAY_PARAM_1 = 0.3
+    EPSILON_DECAY_PARAM_2 = 0.3
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 10000
-    DISTANCE_THRESHOLD = 6
+    NUM_ROUNDS_TRAINING = 15000
+    DISTANCE_THRESHOLD = 3
 
     # the max_feature_size determines all possible feature-states
     max_feature_size = -1
@@ -112,8 +112,8 @@ class BaseQLearningModel(BaseModel):
         feature_q_table_old = np.where((self.SEEN_FEATURES == features_old).all(axis=1))
         if len(feature_q_table_old[0]) > 1:
             self.logger.info("FATAL ERROR OLD FEATURE IS STORED " + str(len(feature_q_table_old[0])) + " TIMES")
-            self.logger.info(features_old)
-            self.logger.info(single_action)
+            #self.logger.info(features_old)
+            #self.logger.info(single_action)
             raise ValueError('q table is in an illegal state')
 
         if len(feature_q_table_old[0]) == 0:
@@ -125,8 +125,8 @@ class BaseQLearningModel(BaseModel):
 
         if len(feature_q_table_new[0]) > 1:
             self.logger.info("FATAL ERROR NEW FEATURE IS STORED " + str(len(feature_q_table_new[0])) + " TIMES")
-            self.logger.info(features_new)
-            self.logger.info(single_action)
+            #self.logger.info(features_new)
+            #self.logger.info(single_action)
             raise ValueError('q table is in an illegal state')
 
         if len(feature_q_table_new[0]) == 0:
@@ -156,7 +156,7 @@ class BaseQLearningModel(BaseModel):
 
         if distance > self.DISTANCE_THRESHOLD:
             # get educated guess
-            self.logger.info("educated guess provides the initial values")
+            #self.logger.info("educated guess provides the initial values")
             move_values = self.build_educated_initial_guess(feature_representation)
         else:
             self.logger.info("nearest -neighbour provides the initial values!")
@@ -178,7 +178,7 @@ class BaseQLearningModel(BaseModel):
 
         if (len(index_possibilities[0]) != 1):
             self.logger.info("FATAL ERROR FEATURE IS STORED " + str(len(index_possibilities[0])) + " TIMES")
-            self.logger.info(features)
+            #self.logger.info(features)
             raise ValueError('q table is in an illegal state')
 
         index = int(index_possibilities[0][0])
@@ -191,8 +191,7 @@ class BaseQLearningModel(BaseModel):
         # here an epsilon greedy policy is required
         # for now we assume, that 1000 games will be played - hard coded
         # furthermore we assume, that we want to start of at about 1 and end at about 5%
-
-        return 0.1
+        #return 0.05
 
         standardized_round = (round - self.EPSILON_DECAY_PARAM_1 * self.NUM_ROUNDS_TRAINING) / \
                              (self.EPSILON_DECAY_PARAM_2 * self.NUM_ROUNDS_TRAINING)
@@ -266,7 +265,7 @@ class BaseQLearningModel(BaseModel):
         if train:
             if random.random() < self.get_epsilon(state['round']):
                 action_chosen = self.getActions()[int(random.randint(0, 5))]
-                self.add_move_to_memory(feature_representation, action_chosen)
+                #self.add_move_to_memory(feature_representation, action_chosen)
                 chosen_action = action_chosen
 
         # prevent getting stuck:
@@ -275,6 +274,7 @@ class BaseQLearningModel(BaseModel):
             chosen_action = action
 
         self.add_move_to_memory(feature_representation, chosen_action)
+        #print("chosen action" + str(chosen_action))
         return chosen_action
 
     def find_closest_guess(self, feature_representation):
@@ -283,7 +283,8 @@ class BaseQLearningModel(BaseModel):
 
         weights = np.ndarray(shape=feature_representation.shape)
         weights = np.ones(shape=feature_representation.shape)
-
+        weights[2:10] = [4,4,4,4,2,2,2,2]
+        weights[11:13] = [2,2]
         # just pick the first with the smallest distance
         differences = (self.SEEN_FEATURES[:] != feature_representation)*weights
         #self.logger.info('Single Distance: SEEN,NEW,DISTANCE:' + str(self.SEEN_FEATURES[0]) + str(feature_representation) + str(differences[0]))
@@ -291,6 +292,8 @@ class BaseQLearningModel(BaseModel):
         #self.logger.info("Distance" + str(differences_final))
         #just pick the first with the smallest distance
         index_smallest = np.argmin(differences_final)
+        #self.logger.info("q-value" + str(self.Q_VALUES[index_smallest]))
+        self.logger.info("smalles difference" + str(differences_final[index_smallest]))
         return self.Q_VALUES[index_smallest], differences_final[index_smallest]
 
     def build_educated_initial_guess(self, state):
@@ -308,7 +311,7 @@ class BaseQLearningModel(BaseModel):
 
         if len(index_possibilities[0]) != 1:
             self.logger.info("FATAL ERROR FEATURE IS STORED " + str(len(index_possibilities[0])) + " TIMES")
-            self.logger.info(feature)
+            #self.logger.info(feature)
             raise ValueError('q table is in an illegal state')
 
         feature_ind = index_possibilities[0][0]
@@ -323,17 +326,19 @@ class BaseQLearningModel(BaseModel):
             back_and_forth = (hist1[1] == hist3[1] and hist2[1] == hist4[1] and hist1[1] != hist2[1])
             waiting = (np.all(hist1[0] == hist2[0]) and hist1[1] == hist2[1] and hist1[1] == 'WAIT')
             if back_and_forth or waiting:
-                current_table_state = self.Q_VALUES[feature_ind]
+                current_table_state = np.asarray(self.Q_VALUES[feature_ind])
 
+                # preventing the dropping of random bombs
+                current_table_state[5] = 0
                 # if the current state only contains 0s then we would divide by 0
                 if np.all(current_table_state == 0):
                     current_table_state = current_table_state + 1
                 if np.any(current_table_state < 0):
                     current_table_state = current_table_state + (2 * abs(np.min(current_table_state)))
 
-                # preventing the dropping of random bombs
-                current_table_state[5] = 0
 
+                self.logger.info("dividends: " + str(current_table_state))
+                self.logger.info("divisor: " + str(np.sum(current_table_state)))
                 # probabilities are determined by dividing through the sum
                 probabilities = current_table_state / np.sum(current_table_state)
                 action = np.random.choice(self.ACTIONS, p=probabilities)
