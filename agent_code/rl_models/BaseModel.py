@@ -87,7 +87,7 @@ class BaseModel:
         """
         raise NotImplementedError("A model must provide a methode to turn a gamestate into features. ")
 
-    def compute_additional_rewards(self, events, new_state, old_state, action):
+    def compute_additional_rewards(self, events, stateNew, stateOld, action, memory_short):
         """
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
@@ -125,12 +125,15 @@ class BaseModel:
 
         reward = self.calculateReward(events)
 
-        self.logger.info("calculated_reward = " + str(reward))
+        #self.logger.info("occured events = " + str(events))
+        #self.logger.info("calculated_reward = " + str(reward))
 
         actions = self.multiply_action(action)
 
-        for i in range(0,len(oldStates)):
-            self.performLearningSingleState(oldStates[i],newStates[i],actions[i],reward)
+        for i in range(0, len(oldStates)):
+            quantiles = self.performLearningSingleState(oldStates[i],newStates[i],actions[i],reward)
+
+        return quantiles
 
 
     def multiply_game_state(self, stateToMultiply):

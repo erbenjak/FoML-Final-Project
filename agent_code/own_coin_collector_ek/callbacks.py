@@ -2,7 +2,7 @@ import numpy as np
 import events as e
 import random
 
-from .rl_model import CoinRlModel
+from .rl_model_ek import CoinRlModel
 import os.path
 
 def setup(self):

@@ -15,12 +15,12 @@ class CoinRlModelRedone(BaseQLearningModel):
         BaseQLearningModel.__init__(self, logger, max_feature_size, path)
 
     ############### Necessary Overwrites ##############################################
-    def compute_additional_rewards(self, events, new_state, old_state):
+    def compute_additional_rewards(self, events, stateNew, stateOld, action, memory_short):
         """
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
         """
-        events = self.addCoinDistanceEvents(events,new_state,old_state)
+        events = self.addCoinDistanceEvents(events,stateNew,stateOld)
         return events
 
     def addCoinDistanceEvents(self, events, new_state, old_state):

@@ -4,7 +4,6 @@ from .rl_model import CoinRlModel
 import os.path
 import numpy as np
 
-
 def setup_training(self):
     """
         * called at begin of game
@@ -22,6 +21,7 @@ def setup_training(self):
         self.logger.info("Q-Table gets created")
         self.model.create_qtable()
 
+    self.results = np.array([])
 
 def game_events_occurred(self, old_game_state, self_action, new_game_state, events):
     """
@@ -37,6 +37,9 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
 
 
 def end_of_round(self, last_game_state, last_action, events):
+    self.results = np.append(self.results, last_game_state['self'][1])
+    np.save('score_tracker.npy', self.results)
+
     self.logger.info("Q-Table has been saved")
     q_table = self.model.get_qtable()
     np.save('qtable.npy', q_table)

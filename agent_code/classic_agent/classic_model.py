@@ -17,8 +17,8 @@ class ClassicModel(BaseQLearningModel):
         e.WAITED: -100,
         ###############
         e.SURVIVED_ROUND: 100,
-        e.KILLED_SELF: -1600,
-        e.COIN_COLLECTED: 1000,
+        e.KILLED_SELF: -1800,
+        e.COIN_COLLECTED: 1400,
         e.CRATE_DESTROYED: 200,
         e.KILLED_OPPONENT: 2000,
         e.GOT_KILLED: -700,
@@ -28,15 +28,15 @@ class ClassicModel(BaseQLearningModel):
         e.BOMB_EXPLODED : 0,
         e.OPPONENT_ELIMINATED: 0,
         ############### CUSTOM EVENTS ##############################
-        'DEC_COIN_DIST': 100,
-        "INC_COIN_DIST": -100,
+        'DEC_COIN_DIST': 120,
+        "INC_COIN_DIST": -120,
         'DEC_CRATE_DIST': 90,
         "INC_CRATE_DIST": -90,
         'DEC_BOMB_DIST': -240,
         "INC_BOMB_DIST": 200,
-        "KEEP_BOMB_DIST": -200,
+        "KEEP_BOMB_DIST": -220,
         "GOOD_BOMB": 600,
-        "VERY_GOOD_BOMB": 800,
+        "VERY_GOOD_BOMB": 1000,
         "BAD_BOMB": -800,
         "SURVIVED_BOMB": 100,
         "BOMB_AND_ESCAPE": 1000,
@@ -61,7 +61,7 @@ class ClassicModel(BaseQLearningModel):
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
         """
-        events = self.addSurrivedABombEvent(events, old_state)
+        #events = self.addSurrivedABombEvent(events, old_state)
         events = self.addCoinDistanceEvents(events, new_state, old_state)
         events = self.addBombDistanceEvents(events,new_state,old_state)
         events = self.addCrateDistanceEvents(events, new_state, old_state)
@@ -140,9 +140,12 @@ class ClassicModel(BaseQLearningModel):
             return events
 
         memory_copy = memory.copy()
-        self.logger.info("")
-        lastMove = memory_copy.popleft()
-        secondLastMove = memory_copy.popleft()
+        #self.logger.info("Memory looks like this: " + str(memory_copy))
+        lastMove = memory_copy.pop()
+        secondLastMove = memory_copy.pop()
+        #self.logger.info("Memory looks like this: " + str(memory_copy))
+        #self.logger.info("Last Move: " + str(lastMove))
+        #self.logger.info("Second-last: " + str(secondLastMove))
 
         if secondLastMove[1] != "BOMB":
             return events
@@ -189,8 +192,14 @@ class ClassicModel(BaseQLearningModel):
         for bomb in new_state['bombs']:
             bombPosNew.append(bomb[0])
 
+        if len(bombPosNew)==0:
+            return events
+
         old_distance, closestBombPosOld = self.calc_clossest_bomb_dist(old_state['self'][3], bombPosOld)
         new_distance, closestBombPosNew = self.calc_clossest_bomb_dist(new_state['self'][3], bombPosNew)
+
+        #self.logger.info("Old distance: "+str(old_distance))
+        #self.logger.info("New distance: "+str(new_distance))
 
         if old_distance < new_distance:
             if old_distance > 4:
@@ -204,7 +213,8 @@ class ClassicModel(BaseQLearningModel):
             events.append("DEC_BOMB_DIST")
             return events
 
-        events.append("KEEP_BOMB_DIST")
+        if self.inExplosionZone(closestBombPosNew[0], closestBombPosNew[1], new_state['self'][3][0], new_state['self'][3][1]):
+            events.append("KEEP_BOMB_DIST")
         return events
 
 
@@ -285,17 +295,19 @@ class ClassicModel(BaseQLearningModel):
         for bombpos in bombpositions:
 
             x_dist = abs(agent[0] - bombpos[0])
-            y_dist = abs(agent[1] - bombpos[0])
+            y_dist = abs(agent[1] - bombpos[1])
             total_dist = x_dist + y_dist
             # one now needs to account for blocks in the way of the coin
 
-            if x_dist == 0 and (agent[0] % 2) == 0 and y_dist != 0:
-                # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
-                total_dist += 2
+            # no additional costs need to be calculated when standing directly on the bomb
+            if not (x_dist == 0 and y_dist==0):
+                if x_dist == 0 and (agent[0] % 2) == 0 and y_dist != 0:
+                    # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                    total_dist += 2
 
-            if y_dist == 0 and (agent[1] % 2) == 0 and x_dist != 0:
-                # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
-                total_dist += 2
+                if y_dist == 0 and (agent[1] % 2) == 0 and x_dist != 0:
+                    # then coin and agent are on the same column, which also has walls --> therefore increase total by 2
+                    total_dist += 2
 
             if (total_dist < overall_dist):
                 overall_dist = total_dist
@@ -306,7 +318,7 @@ class ClassicModel(BaseQLearningModel):
     @staticmethod
     def calc_bomb_distance(x, y, single_bomb_pos):
         x_dist = abs(x - single_bomb_pos[0])
-        y_dist = abs(y - single_bomb_pos[0])
+        y_dist = abs(y - single_bomb_pos[1])
         total_dist = x_dist + y_dist
         # one now needs to account for blocks in the way of the coin
 
@@ -373,7 +385,7 @@ class ClassicModel(BaseQLearningModel):
         for bomb in state ["bombs"]:
             bombPositions.append(bomb[0])
 
-        distance, closestBombPos = self.calc_clossest_bomb_dist(pos_agent, bombPositions)
+        closestBombDistance, closestBombPos = self.calc_clossest_bomb_dist(pos_agent, bombPositions)
 
         opponent_positions=[]
         for opponent in state['others']:
@@ -384,13 +396,13 @@ class ClassicModel(BaseQLearningModel):
         # adds four feature
         encoded_state = np.append(encoded_state, self.calc_surrounding_features(pos_agent, field, explosionMap))
         # adds four feature
-        encoded_state = np.append(encoded_state, self.calc_surrounding_escapability(pos_agent, field, closestBombPos,bombPositions, opponent_positions))
+        encoded_state = np.append(encoded_state, self.calc_surrounding_escapability(pos_agent, field, closestBombPos,bombPositions, opponent_positions, explosionMap))
         #adds one feature
         encoded_state = np.append(encoded_state, self.bombing_effective_feature(state['self'],field,opponent_positions))
         # adds one feature
         encoded_state = np.append(encoded_state, self.bomb_explodable_feature(pos_agent, closestBombPos))
         # adds two features
-        encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, closestBombPos))
+        encoded_state = np.append(encoded_state, self.bomb_direction_feature(pos_agent, closestBombPos, closestBombDistance))
         # adds two features
         encoded_state = np.append(encoded_state, self.calc_distance_and_direction_crate(pos_agent, field))
         # adds two features
@@ -563,13 +575,14 @@ class ClassicModel(BaseQLearningModel):
 
         return feature
 
-    def calc_surrounding_escapability(self,pos_agent, field, closestBombPos, bombPositions, opponentPositions):
+    def calc_surrounding_escapability(self,pos_agent, field, closestBombPos, bombPositions, opponentPositions,
+                                      explosionMap):
         """
         Calculating the bomb escape-capability for surrounding fields
         --> Meaning is it possible to escape the closest bomb from there
         0   - no bomb or the agent is already escaped
         1   - bomb and helps escape the agent
-        -1  - bomb and does not allow for escaping
+        -1  - bomb and does not allow for escaping -- steps into explosion
         feature[0] = left
         feature[1] = right
         feature[2] = down
@@ -596,17 +609,18 @@ class ClassicModel(BaseQLearningModel):
 
         # if the agent is currently not in danger it is checked if one of his steps leads him into danger
         if currently_in_danger is False:
-            if self.inExplosionZone(x_bomb, y_bomb, x-1, y):
+            if self.inExplosionZone(x_bomb, y_bomb, x-1, y) or self.inExplosion(x-1, y, explosionMap):
                 feature[0] = -1
 
-            if self.inExplosionZone(x_bomb, y_bomb, x+1, y):
+            if self.inExplosionZone(x_bomb, y_bomb, x+1, y) or self.inExplosion(x+1, y, explosionMap):
                 feature[1] = -1
 
-            if self.inExplosionZone(x_bomb, y_bomb, x, y-1):
+            if self.inExplosionZone(x_bomb, y_bomb, x, y-1) or self.inExplosion(x, y-1, explosionMap):
                 feature[2] = -1
 
-            if self.inExplosionZone(x_bomb, y_bomb, x, y+1):
+            if self.inExplosionZone(x_bomb, y_bomb, x, y+1) or self.inExplosion(x, y+1, explosionMap):
                 feature[3] = -1
+
 
             return feature
 
@@ -739,12 +753,18 @@ class ClassicModel(BaseQLearningModel):
                             feature[3] = 1
                             feature_to_consider.remove(3)
 
-        self.logger.info("Calculated the following Escape-feature: " + str(feature))
+        # self.logger.info("Calculated the following Escape-feature: " + str(feature))
 
         if len(feature_to_consider) != 0:
             raise ValueError("List of features to consider should be empty but is not: "+ str(len(feature_to_consider)))
 
         return feature
+
+    @staticmethod
+    def inExplosion(pos_x, pos_y, explosion_map):
+        if explosion_map[pos_x][pos_y] != 0:
+            return True
+        return False
 
     @staticmethod
     def inExplosionZone(x_bomb, y_bomb, pos_x, pos_y):
@@ -818,7 +838,7 @@ class ClassicModel(BaseQLearningModel):
         return 0
 
 
-    def bomb_direction_feature(self, pos_agent, bomb):
+    def bomb_direction_feature(self, pos_agent, bomb, distance):
         '''
         Simple encoding -1, 0, 1 for Left, no_x, Right
         -1, 0, 1 for Up, no_y, Down
@@ -826,6 +846,9 @@ class ClassicModel(BaseQLearningModel):
         feature = np.zeros((2))
 
         if bomb is None:
+            return feature
+
+        if distance > 4:
             return feature
 
         if pos_agent[0] < bomb[0]:

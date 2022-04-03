@@ -14,6 +14,7 @@ def setup_training(self):
     """
     self.model = CoinRlModelRedone(self.logger, 2187, abs_path)
     self.model.setup()
+    self.results = np.array([])
 
 
 def game_events_occurred(self, old_game_state, self_action, new_game_state, events):
@@ -26,5 +27,8 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
 
 
 def end_of_round(self, last_game_state, last_action, events):
+    self.results = np.append(self.results, last_game_state['self'][1])
+    np.save('score_tracker.npy', self.results)
+
     self.model.store_current_qtbale()
     return 1

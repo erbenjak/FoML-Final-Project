@@ -12,7 +12,7 @@ def setup(self):
 
 def act(self, game_state: dict):
     if self.train:
-        if random.random() < self.model.get_epsilon():
+        if random.random() < 0.051:
             return self.model.getActions()[int(random.randint(0, 5))]
-    return self.model.playGame(game_state)
+    return self.model.playGame(self.train, game_state)
 

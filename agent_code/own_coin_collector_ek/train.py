@@ -16,6 +16,8 @@ def setup_training(self):
     # as we have a 17 by 17 map
     self.model = CoinRlModel(289)
     # If it doesn't already exist we create our Q-Table here.
+    self.results = np.array([])
+
     if os.path.isfile('qtable.npy'):
         self.logger.info("Q-Table gets loaded")
         self.model.set_qtable(np.load('qtable.npy'))
@@ -50,4 +52,8 @@ def end_of_round(self, last_game_state, last_action, events):
     self.logger.info("Q-Table has been saved")
     q_table = self.model.get_qtable()
     np.save('qtable.npy', q_table)
+
+    self.results = np.append(self.results, last_game_state['self'][1])
+    np.save('score_tracker.npy', self.results)
+
     return 1
