@@ -3,10 +3,10 @@ import numpy as np
 import random
 import time
 
-from ..rl_models.BaseQLearningModelExtended import BaseQLearningModel
+from ..rl_models.BaseQLearningModelGradient import BaseQLearningModel
 
 
-class ClassicModel(BaseQLearningModel):
+class GradientModel(BaseQLearningModel):
     REWARDS = {
         e.INVALID_ACTION: -300,
         ###############
