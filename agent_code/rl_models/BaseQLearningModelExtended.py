@@ -27,16 +27,23 @@ class BaseQLearningModel(BaseModel):
     GAMMA = 0.9
     EPSILON_THRESHOLD = 0.05
     EPSILON_START = 1.1
-    EPSILON_DECAY_PARAM_1 = 0.5
-    EPSILON_DECAY_PARAM_2 = 0.2
+    EPSILON_DECAY_PARAM_1 = 0.3
+    EPSILON_DECAY_PARAM_2 = 0.5
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 10000
-    DISTANCE_THRESHOLD = 6
+    NUM_ROUNDS_TRAINING = 100
+    DISTANCE_THRESHOLD = 3
 
     # the max_feature_size determines all possible feature-states
     max_feature_size = -1
     path_q_table = None
     path_seen_representations = None
+
+    #counter decision origin
+    counterTotal = 0
+    counterRandom = 0
+    counterQTable = 0
+    counterNearestNeighbour = 0
+    counterEducatedGuess = 0
 
     def __init__(self, logger, max_feature_size, path_q_tabel, path_seen_representations,
                  alpha=0.15, gamma=0.10, epsilon=0.05):
@@ -142,6 +149,14 @@ class BaseQLearningModel(BaseModel):
             (1 - self.ALPHA) * self.Q_VALUES[index_q_table_old][action_index] + \
             self.ALPHA * (reward + self.GAMMA * followup_reward)
 
+        quantiles = np.zeros(5)
+        quantiles[0] = np.quantile(self.Q_VALUES, 0)
+        quantiles[1] = np.quantile(self.Q_VALUES, 0.25)
+        quantiles[2] = np.quantile(self.Q_VALUES, 0.5)
+        quantiles[3] = np.quantile(self.Q_VALUES, 0.75)
+        quantiles[4] = np.quantile(self.Q_VALUES, 1)
+        return quantiles
+
     def add_new_state(self, feature_representation):
         """
         Adds a new state to the SEEN_REPRESENTATIONS and this states initial values to the Q_VALUES
@@ -156,10 +171,7 @@ class BaseQLearningModel(BaseModel):
 
         if distance > self.DISTANCE_THRESHOLD:
             # get educated guess
-            self.logger.info("educated guess provides the initial values")
             move_values = self.build_educated_initial_guess(feature_representation)
-        else:
-            self.logger.info("nearest -neighbour provides the initial values!")
 
         # store new initial result
         self.SEEN_FEATURES = np.append(self.SEEN_FEATURES, np.expand_dims(feature_representation, axis=0), axis=0)
@@ -191,9 +203,6 @@ class BaseQLearningModel(BaseModel):
         # here an epsilon greedy policy is required
         # for now we assume, that 1000 games will be played - hard coded
         # furthermore we assume, that we want to start of at about 1 and end at about 5%
-
-        return 0.1
-
         standardized_round = (round - self.EPSILON_DECAY_PARAM_1 * self.NUM_ROUNDS_TRAINING) / \
                              (self.EPSILON_DECAY_PARAM_2 * self.NUM_ROUNDS_TRAINING)
         cosh = np.cosh(math.exp(-standardized_round))
@@ -206,6 +215,7 @@ class BaseQLearningModel(BaseModel):
 
     ################ playing the actual game with the given information ###########
     def playGame(self, train, state):
+        self.counterTotal += 1
         feature_representation = self.calculateFeaturesFromState(state)
 
         """plays the game using the trained qtable"""
@@ -235,12 +245,16 @@ class BaseQLearningModel(BaseModel):
                 if len(index_representation_table[0]) > 0:
                     continue
 
+                nearestNeigbour = False
+
                 # find_closest state
                 move_values_single_state, distance = self.find_closest_guess(single_feature_representation)
 
                 if distance > self.DISTANCE_THRESHOLD:
                     # get educated guess
                     move_values_single_state = self.build_educated_initial_guess(single_feature_representation)
+                else:
+                    nearestNeigbour = True
 
                 # store new initial result
                 self.SEEN_FEATURES = np.append(self.SEEN_FEATURES,
@@ -266,14 +280,26 @@ class BaseQLearningModel(BaseModel):
         if train:
             if random.random() < self.get_epsilon(state['round']):
                 action_chosen = self.getActions()[int(random.randint(0, 5))]
-                self.add_move_to_memory(feature_representation, action_chosen)
+                #self.add_move_to_memory(feature_representation, action_chosen)
                 chosen_action = action_chosen
+                self.counterRandom += 1
+            else:
+                if new_state_encountered:
+                    if nearestNeigbour:
+                        self.counterNearestNeighbour += 1
+                    else:
+                        self.counterEducatedGuess += 1
+                else:
+                    self.counterQTable += 1
+
 
         # prevent getting stuck:
         action = self.prevent_getting_stuck(state)
         if action is not None:
             chosen_action = action
-
+        self.logger.info("escape_feature = " + str(feature_representation[6:10]))
+        self.logger.info("choosen-move = "+ str(chosen_action))
+        self.logger.info("choosen by q-table:" + str(self.ACTIONS[int(move)]))
         self.add_move_to_memory(feature_representation, chosen_action)
         return chosen_action
 
@@ -323,7 +349,10 @@ class BaseQLearningModel(BaseModel):
             back_and_forth = (hist1[1] == hist3[1] and hist2[1] == hist4[1] and hist1[1] != hist2[1])
             waiting = (np.all(hist1[0] == hist2[0]) and hist1[1] == hist2[1] and hist1[1] == 'WAIT')
             if back_and_forth or waiting:
-                current_table_state = self.Q_VALUES[feature_ind]
+                current_table_state = np.asarray(self.Q_VALUES[feature_ind])
+
+                # preventing the dropping of random bombs
+                current_table_state[5] = 0
 
                 # if the current state only contains 0s then we would divide by 0
                 if np.all(current_table_state == 0):
@@ -331,9 +360,8 @@ class BaseQLearningModel(BaseModel):
                 if np.any(current_table_state < 0):
                     current_table_state = current_table_state + (2 * abs(np.min(current_table_state)))
 
-                # preventing the dropping of random bombs
-                current_table_state[5] = 0
-
+                # self.logger.info("dividends: " + str(current_table_state))
+                # self.logger.info("divisor: " + str(np.sum(current_table_state)))
                 # probabilities are determined by dividing through the sum
                 probabilities = current_table_state / np.sum(current_table_state)
                 action = np.random.choice(self.ACTIONS, p=probabilities)
@@ -357,3 +385,18 @@ class BaseQLearningModel(BaseModel):
             self.logger.info("Saving current state of the q-table")
             np.save(path_q_table, self.Q_VALUES)
             np.save(path_seen_rep, self.SEEN_FEATURES)
+
+    def getCounterPercentages(self):
+        percentRandom = self.counterRandom / self.counterTotal
+        percentQTable = self.counterQTable / self.counterTotal
+        percentNN = self.counterNearestNeighbour / self.counterTotal
+        percentGuess = self.counterEducatedGuess / self.counterTotal
+
+        return np.array([percentRandom, percentQTable, percentNN, percentGuess])
+
+    def resetCounter(self):
+        self.counterTotal = 0
+        self.counterRandom = 0
+        self.counterQTable = 0
+        self.counterNearestNeighbour = 0
+        self.counterEducatedGuess = 0

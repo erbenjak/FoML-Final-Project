@@ -1,22 +1,23 @@
 import numpy as np
 from collections import deque
+
 """
     This class manages everything required to perform regression learning. 
-    
+
     The concrete implementations are managed by the inheriting models,
     this will hopefully allow for more structured code structuring over
     the different models. As all other models will be based on this class
     one needs to take special care of the correctness of all it's methods. 
-    
+
     This class mainly defines some very broad general classes. Which then need to be fully
     implemented for the different models.
-    
+
     It also provides the ability to turn/mirror the playing-field allowing for faster learning as well as 
     giving the the models an undefined feel for the symmetry of the game.
 """
 
-class BaseModel:
 
+class BaseModel:
     # the logger is an essential part used for debugging. To not be
     # forced to always parse the logger it is stored locally.
     logger = None
@@ -24,17 +25,17 @@ class BaseModel:
     CENTER = None
     WIDTH = -1
     HEIGHT = -1
-    ACTIONS = ["UP","DOWN","LEFT","RIGHT","WAIT","BOMB"]
+    ACTIONS = ["UP", "DOWN", "LEFT", "RIGHT", "WAIT", "BOMB"]
 
     # we need to setup some-action history
     SHORT_MEMORY_LENGTH = 5
     # gets extended after choosing an action contains
     # defining a max-length means, that we are not required to pop the elements
-    memory_short = deque([],maxlen=SHORT_MEMORY_LENGTH)
+    memory_short = deque([], maxlen=SHORT_MEMORY_LENGTH)
     # gets extended after learning and also stores the memory
     memory_long = deque()
 
-    def __init__(self,logger, WIDTH=17, HEIGHT=17, CENTER=(8,8)):
+    def __init__(self, logger, WIDTH=17, HEIGHT=17, CENTER=(8, 8)):
         self.WIDTH = WIDTH
         self.HEIGHT = HEIGHT
         self.CENTER = CENTER
@@ -43,7 +44,7 @@ class BaseModel:
             raise ValueError('A regression model requires a logger')
         self.logger = logger
         # rotation-matrix is intialized it can be used to look up the new coordinates after the rotation
-        self.rotationMatrix = self.initRotationMatrix(WIDTH,HEIGHT,CENTER)
+        self.rotationMatrix = self.initRotationMatrix(WIDTH, HEIGHT, CENTER)
 
     def clean_up(self):
         self.memory_short.clear()
@@ -56,7 +57,7 @@ class BaseModel:
 
     ############################# Abstract Headers #######################################################
 
-    def playGame(self, train,state):
+    def playGame(self, train, state):
         """
         Uses the learned progress to play the game.
         """
@@ -87,7 +88,7 @@ class BaseModel:
         """
         raise NotImplementedError("A model must provide a methode to turn a gamestate into features. ")
 
-    def compute_additional_rewards(self, events, new_state, old_state, action):
+    def compute_additional_rewards(self, events, stateNew, stateOld, action, memory_short):
         """
         Takes a set of events produced by the game engine and adds some custom events to be able to
         add some additional self-defined 'custom' events
@@ -109,9 +110,8 @@ class BaseModel:
 
         actions = self.multiply_action(last_action)
 
-        for i in range(0,len(gameStates)):
-            self.performLearningLastState(gameStates[i],actions[i],reward)
-
+        for i in range(0, len(gameStates)):
+            self.performLearningLastState(gameStates[i], actions[i], reward)
 
     def performLearning(self, stateOld, stateNew, action, events):
         """
@@ -125,13 +125,15 @@ class BaseModel:
 
         reward = self.calculateReward(events)
 
-        self.logger.info("calculated_reward = " + str(reward))
+        # self.logger.info("occured events = " + str(events))
+        # self.logger.info("calculated_reward = " + str(reward))
 
         actions = self.multiply_action(action)
 
-        for i in range(0,len(oldStates)):
-            self.performLearningSingleState(oldStates[i],newStates[i],actions[i],reward)
+        for i in range(0, len(oldStates)):
+            quantiles = self.performLearningSingleState(oldStates[i], newStates[i], actions[i], reward)
 
+        return quantiles
 
     def multiply_game_state(self, stateToMultiply):
         """
@@ -154,7 +156,6 @@ class BaseModel:
 
         return [stateToMultiply, mirroredState, state90, mirroredState90,
                 state180, mirroredState180, state270, mirroredState270]
-
 
     def mirrorState(self, stateToMultiply):
         """
@@ -179,7 +180,7 @@ class BaseModel:
         ### 4.
         mirrored_bombs = []
         for bomb in mirroredState['bombs']:
-            mirrored_bombs.append((self.mirror_coordinates(bomb[0]),bomb[1]))
+            mirrored_bombs.append((self.mirror_coordinates(bomb[0]), bomb[1]))
         mirroredState['bombs'] = mirrored_bombs
 
         ### 5.
@@ -194,7 +195,7 @@ class BaseModel:
         ### 7.
         mirrored_own_position = self.mirror_coordinates(mirroredState['self'][3])
         mirroredState['self'] = (mirroredState['self'][0], mirroredState['self'][1],
-                                mirroredState['self'][2],mirrored_own_position)
+                                 mirroredState['self'][2], mirrored_own_position)
 
         ### 8.
         mirrored_opponents = []
@@ -237,14 +238,14 @@ class BaseModel:
         ### 6.
         turned_coins = []
         for coin in turnedState['coins']:
-            #self.logger.info("coin has following coordinates:" +str(coin))
+            # self.logger.info("coin has following coordinates:" +str(coin))
             turned_coins.append(self.turn_coordinates(coin))
         turnedState['coins'] = turned_coins
 
         ### 7.
         turned_own_position = self.turn_coordinates(turnedState['self'][3])
         turnedState['self'] = (turnedState['self'][0], turnedState['self'][1],
-                                 turnedState['self'][2], turned_own_position)
+                               turnedState['self'][2], turned_own_position)
 
         ### 8.
         turned_opponents = []
@@ -268,15 +269,15 @@ class BaseModel:
         rotates the coordinates by 90 degree in a clockwise direction
         """
         # to improve performance the rotation  coordinates are calculated only once and then stored
-        x,y = coordinates
+        x, y = coordinates
         return (self.rotationMatrix[x][y])
 
-    def initRotationMatrix(self ,WIDTH, HEIGHT, CENTER):
-        rotMat = np.empty((WIDTH,HEIGHT), dtype=object)
+    def initRotationMatrix(self, WIDTH, HEIGHT, CENTER):
+        rotMat = np.empty((WIDTH, HEIGHT), dtype=object)
 
         for i in range(0, WIDTH):
             for j in range(0, HEIGHT):
-                #self.logger.info("initial value: "+str(rotMat[i][j]))
+                # self.logger.info("initial value: "+str(rotMat[i][j]))
                 rotMat[i][j] = self.calculateRotatedCoordinates(i, j, CENTER)
 
         return rotMat
@@ -297,9 +298,13 @@ class BaseModel:
         y = y_prime_new + CENTER[1]
 
         if x < 0 or y < 0:
-            self.logger.info("negative coordinates were calculated fot the following inpout: "+str(x_store)+" - "+str(y_store)+ " results: "+ str(x)+ "-" + str(y))
+            self.logger.info(
+                "negative coordinates were calculated fot the following inpout: " + str(x_store) + " - " + str(
+                    y_store) + " results: " + str(x) + "-" + str(y))
         if x > 16 or y > 16:
-            self.logger.info("too big coordinates were calculated fot the following inpout: " + str(x_store) + " - " + str(y_store) + " results: " + str(x) + "-" + str(y))
+            self.logger.info(
+                "too big coordinates were calculated fot the following inpout: " + str(x_store) + " - " + str(
+                    y_store) + " results: " + str(x) + "-" + str(y))
 
         return x, y
 
