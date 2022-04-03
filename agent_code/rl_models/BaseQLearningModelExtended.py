@@ -149,13 +149,6 @@ class BaseQLearningModel(BaseModel):
             (1 - self.ALPHA) * self.Q_VALUES[index_q_table_old][action_index] + \
             self.ALPHA * (reward + self.GAMMA * followup_reward)
 
-        quantiles = np.zeros(5)
-        quantiles[0] = np.quantile(self.Q_VALUES, 0)
-        quantiles[1] = np.quantile(self.Q_VALUES, 0.25)
-        quantiles[2] = np.quantile(self.Q_VALUES, 0.5)
-        quantiles[3] = np.quantile(self.Q_VALUES, 0.75)
-        quantiles[4] = np.quantile(self.Q_VALUES, 1)
-        return quantiles
 
     def add_new_state(self, feature_representation):
         """
@@ -400,3 +393,6 @@ class BaseQLearningModel(BaseModel):
         self.counterQTable = 0
         self.counterNearestNeighbour = 0
         self.counterEducatedGuess = 0
+
+    def getQValues(self):
+        return self.Q_VALUES

@@ -131,9 +131,7 @@ class BaseModel:
         actions = self.multiply_action(action)
 
         for i in range(0, len(oldStates)):
-            quantiles = self.performLearningSingleState(oldStates[i], newStates[i], actions[i], reward)
-
-        return quantiles
+            self.performLearningSingleState(oldStates[i], newStates[i], actions[i], reward)
 
     def multiply_game_state(self, stateToMultiply):
         """

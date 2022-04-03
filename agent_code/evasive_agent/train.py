@@ -26,18 +26,26 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
     """
     if old_game_state is None:
         return
-    quan = self.model.performLearning(old_game_state, new_game_state, self_action, events)
-    self.quantiles = np.append(self.quantiles,quan)
+    self.model.performLearning(old_game_state, new_game_state, self_action, events)
 
 def end_of_round(self, last_game_state, last_action, events):
     self.results = np.append(self.results, last_game_state['self'][1])
     self.duration = np.append(self.duration, last_game_state['step'])
     self.ratios = np.append(self.ratios, self.model.getCounterPercentages())
+    q_values = self.model.getQValues()
+    quan = np.zeros(5)
+    quan[0] = np.quantile(q_values, 0)
+    quan[1] = np.quantile(q_values, 0.25)
+    quan[2] = np.quantile(q_values, 0.5)
+    quan[3] = np.quantile(q_values, 0.75)
+    quan[4] = np.quantile(q_values, 1)
 
+    self.quantiles = np.append(self.quantiles, quan)
     np.save("results.npy",self.results)
     np.save("duration.npy",self.duration)
     np.save("ratios.npy", self.ratios)
     np.save("quantiles.npy", self.quantiles)
+
     self.model.performEndOfGameLearning(last_game_state, last_action, events)
     self.model.store_current_q_table(abs_path_q_table,abs_path_seen_sates_table)
     self.model.resetCounter()
