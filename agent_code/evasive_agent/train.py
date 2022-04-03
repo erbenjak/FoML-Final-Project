@@ -1,11 +1,11 @@
 # this is training file for the own_coin_collector-agents
 # it's focus lies upon managing to perform the coin_heaven scenario efficiently
-from .classic_model import ClassicModel
+from .evasive_model import EvasiveModel
 import os.path
 import numpy as np
 
-abs_path_q_table = "classic_agent_qtable.npy"
-abs_path_seen_sates_table = "classic_agent_seen_representations.npy"
+abs_path_q_table = "evasive_agent_qtable.npy"
+abs_path_seen_sates_table = "evasive_agent_seen_representations.npy"
 
 def setup_training(self):
     """
@@ -13,7 +13,7 @@ def setup_training(self):
         * pass training variables into the self-object
         * the total reward is stored
     """
-    self.model = ClassicModel(self.logger, 531441, abs_path_q_table, abs_path_seen_sates_table)
+    self.model = EvasiveModel(self.logger, 531441, abs_path_q_table, abs_path_seen_sates_table)
     self.model.setup()
     self.results = np.array([])
     self.duration = np.array([])

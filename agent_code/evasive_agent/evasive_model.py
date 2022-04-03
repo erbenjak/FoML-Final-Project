@@ -5,7 +5,7 @@ import time
 
 from ..rl_models.BaseQLearningModelExtended import BaseQLearningModel
 
-class ClassicModel(BaseQLearningModel):
+class EvasiveModel(BaseQLearningModel):
 
     REWARDS = {
         e.INVALID_ACTION : -200,
