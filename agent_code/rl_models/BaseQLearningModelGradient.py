@@ -28,9 +28,9 @@ class BaseQLearningModel(BaseModel):
     EPSILON_THRESHOLD = 0.05
     EPSILON_START = 1.1
     EPSILON_DECAY_PARAM_1 = 0.3
-    EPSILON_DECAY_PARAM_2 = 0.3
+    EPSILON_DECAY_PARAM_2 = 0.5
     EPSILON_DECAY_PARAM_3 = 0.1
-    NUM_ROUNDS_TRAINING = 15000
+    NUM_ROUNDS_TRAINING = 5000
     DISTANCE_THRESHOLD = 3
 
     # the max_feature_size determines all possible feature-states
