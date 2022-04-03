@@ -1,7 +1,7 @@
 import events as e
 import numpy as np
 import random
-from ..rl_models.BaseQLearningModel import BaseQLearningModel
+from agent_code.rl_models.BaseQLearningModel import BaseQLearningModel
 
 class CoinRlModelRedone(BaseQLearningModel):
     """
