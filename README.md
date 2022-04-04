@@ -5,7 +5,7 @@ Final Project for the for the Fundamentals of ML course winter term 21/22
 ## Group details:
 - Jakob, Erben - jakobus.erben@gmail.com - 3727893
 - Ebbo, Kramer - *Email einfügen* - *Mat.-Nr. einfügen*
-- Vanessa, Zuber - *Email einfügen*  - *Mat.-Nr. einfügen*
+- Vanessa, Zuber - zuber@cl.uni-heidelberg.de  - 3386382
 
 ---
 ## Where to find:
